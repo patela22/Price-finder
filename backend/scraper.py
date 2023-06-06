@@ -3,25 +3,27 @@ import requests
 from bs4 import BeautifulSoup
 from time import sleep
 import re
-0
+
 headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36'}
-
-
-# In[12]:
 
 
 # Amazon Link
 def extract_prices_and_links_amazon(soup):
     items = []
     for item in soup.select('.s-result-item'):
-        price_tag = item.select_one('.a-price-whole')
+        link = 'https://www.amazon.com' + item.select_one('.a-link-normal')['href']
+        product_page = requests.get(link, headers=headers)
+        product_soup = BeautifulSoup(product_page.content, "html.parser")
+
+        price_tag = product_soup.find('span', {'class': "a-offscreen"})
         if not price_tag:
             continue
-        price = float(price_tag.text.replace(',', ''))
-        link = 'https://www.amazon.com' + item.select_one('.a-link-normal')['href']
+        price = float(price_tag.text.replace('$', '').replace(',', ''))
+
         items.append((price, link))
     return items
+
 
 def find_lowest_price_amazon(item):
     base_url = "https://www.amazon.com"
@@ -40,11 +42,7 @@ def find_lowest_price_amazon(item):
 
         sleep(1)  # To prevent overwhelming the server with requests
     
-    return min(items, key=lambda x: x[0]) if items else (float('inf'), None)
-
-
-# In[13]:
-
+    return min(items, key=lambda x: x[0]) if items else (None, None)
 
 # Ebay Link
 def extract_prices_and_links_ebay(soup):
@@ -67,11 +65,7 @@ def find_lowest_price_ebay(item):
     soup = BeautifulSoup(response.content, 'lxml')
 
     items = extract_prices_and_links_ebay(soup)
-    return min(items, key=lambda x: x[0]) if items else (float('inf'), None)
-
-
-# In[14]:
-
+    return min(items, key=lambda x: x[0]) if items else (None, None)
 
 # Walmart Link
 def extract_prices_and_links_walmart(soup):
@@ -91,10 +85,7 @@ def find_lowest_price_walmart(item):
     soup = BeautifulSoup(response.content, 'lxml')
 
     items = extract_prices_and_links_walmart(soup)
-    return min(items, key=lambda x: x[0]) if items else (float('inf'), None)
-
-
-# In[15]:
+    return min(items, key=lambda x: x[0]) if items else (None, None)
 
 
 # Target Link
@@ -115,18 +106,24 @@ def find_lowest_price_target(item):
     soup = BeautifulSoup(response.content, 'lxml')
 
     items = extract_prices_and_links_target(soup)
-    return min(items, key=lambda x: x[0]) if items else (float('inf'), None)
+    return min(items, key=lambda x: x[0]) if items else (None, None)
 
 
 
 # Lowest Price
-def find_lowest_price(item):
-    lowest_amazon = find_lowest_price_amazon(item)
-    lowest_ebay = find_lowest_price_ebay(item)
-    lowest_walmart = find_lowest_price_walmart(item)
-    lowest_target = find_lowest_price_target(item)
+def find_lowest_price(item, stores):
+    lowest_amazon = find_lowest_price_amazon(item) if stores["amazon"] else (None, None)
+    lowest_ebay = find_lowest_price_ebay(item) if stores["ebay"] else (None, None)
+    lowest_walmart = find_lowest_price_walmart(item) if stores["walmart"] else (None, None)
+    lowest_target = find_lowest_price_target(item) if stores["target"] else (None, None)
 
-    lowest = min(lowest_amazon, lowest_ebay, lowest_walmart, lowest_target, key=lambda x: x[0])
+    prices = [lowest_amazon, lowest_ebay, lowest_walmart, lowest_target]
+    prices = [price for price in prices if price[0] is not None]
+
+    if not prices:
+        return {"price": None, "link": None, "store": None}
+
+    lowest = min(prices, key=lambda x: x[0])
 
     store = ''
     if lowest == lowest_amazon:
@@ -138,6 +135,7 @@ def find_lowest_price(item):
     elif lowest == lowest_target:
         store = 'Target'
 
-    return lowest[0], lowest[1], store
+    return {"price": lowest[0], "link": lowest[1], "store": store}
+
 
 
